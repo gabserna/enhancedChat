@@ -1,7 +1,12 @@
 const net = require("net");
 const fs = require("fs");
-const PORT = 5050;
-const adminPassword = "Admin123#"; // admin passwrod
+
+const chatPort = 5050;
+const adminPassword = "supersecretpw"; // admin password to change: Admin123#
+if (adminPassword === "") {
+  throw new Error("Admin password cannot be empty.");
+}
+
 let clients = [];
 
 const server = net.createServer((socket) => {
@@ -37,8 +42,8 @@ const server = net.createServer((socket) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Listening on port ${PORT}`);
+server.listen(chatPort, () => {
+  console.log(`Listening on chatPort ${chatPort}`);
 });
 
 function processCommand(clientId, command) {
@@ -106,10 +111,6 @@ function logMessage(message) {
   fs.appendFileSync("chat.log", message);
 }
 
-// Resto de las funciones (whisperTxt
-// kickUser y broadcastMessage)
-
-// Send a private message to a specific user
 function whisperTxt(senderId, recipient, message) {
   const recipientClient = clients.find(
     (client) => client.username === recipient
@@ -132,7 +133,6 @@ function whisperTxt(senderId, recipient, message) {
   recipientClient.socket.write(whisperTxt);
 }
 
-// Update the username of a client
 function updateUsername(clientId, newUsername) {
   const client = clients[clientId - 1];
 
@@ -156,12 +156,11 @@ function updateUsername(clientId, newUsername) {
   client.socket.write(successMessage);
 
   const broadcastMessage = `User${clientId} has changed their username to '${newUsername}'.\n`;
-  broadcastMessage(senderId, broadcastMessage);
+  broadcastMessage(clientId, broadcastMessage);
 
   logMessage(broadcastMessage);
 }
 
-//kick user from the chat usin /k
 function kickUser(adminId, targetUsername, adminPass) {
   const adminClient = clients[adminId - 1];
 
@@ -198,12 +197,17 @@ function kickUser(adminId, targetUsername, adminPass) {
   logMessage(broadcastMessage);
 }
 
-// Send a list of connected client names to the requesting user
 function showClientList(clientId) {
   const client = clients[clientId - 1];
-  const clientList = clients
-    .map((client) => client.username || `User${client.clientId}`)
+  const connectedClients = clients
+    .filter((client) => client.username !== null)
+    .map((client) => client.username)
     .join(", ");
 
-  client.socket.write(`Connected clients: ${clientList}\n`);
+  if (connectedClients.length === 0) {
+    client.socket.write("No connected clients.\n");
+    return;
+  }
+
+  client.socket.write(`Connected clients: ${connectedClients}\n`);
 }
