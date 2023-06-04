@@ -22,7 +22,7 @@ const server = net.createServer((socket) => {
     const payload = data.toString().trim();
 
     if (payload.startsWith("/")) {
-      processCommand(clientId, payload);
+      adminCommand(clientId, payload);
     } else {
       const message = `User${clientId}: ${payload}\n`;
       console.log(message);
@@ -46,49 +46,44 @@ server.listen(chatPort, () => {
   console.log(`Listening on chatPort ${chatPort}`);
 });
 
-function processCommand(clientId, command) {
+function adminCommand(clientId, command) {
   const parts = command.split(" ");
   const commandName = parts[0].toLowerCase();
 
   switch (commandName) {
-    case "/w":
-      processWhisperCommand(clientId, parts);
+    case "/w": whisperToUser(clientId, parts);
       break;
-    case "/username":
-      processUsernameCommand(clientId, parts);
+    case "/username": changeUserName(clientId, parts);
       break;
-    case "/kick":
-      processKickCommand(clientId, parts);
+    case "/kick": kickUserOut(clientId, parts);
       break;
-    case "/clientlist":
-      showClientList(clientId);
+    case "/clientlist": showClientList(clientId);
       break;
-    default:
-      clients[clientId - 1].socket.write("Invalid command.\n");
+    default: clients[clientId - 1].socket.write("Invalid command.\n");
       break;
   }
 }
 
-function processWhisperCommand(senderId, parts) {
+function whisperToUser(senderId, parts) {
   if (parts.length >= 3) {
     const recipient = parts[1];
     const message = parts.slice(2).join(" ");
     whisperTxt(senderId, recipient, message);
-  } else {
+  } else {updateUserName
     clients[senderId - 1].socket.write("Invalid whisper command.\n");
   }
 }
 
-function processUsernameCommand(clientId, parts) {
+function changeUserName(clientId, parts) {
   if (parts.length === 2) {
     const newUsername = parts[1];
-    updateUsername(clientId, newUsername);
+    updateUserName(clientId, newUsername);
   } else {
     clients[clientId - 1].socket.write("Invalid username command.\n");
   }
 }
 
-function processKickCommand(adminId, parts) {
+function kickUserOut(adminId, parts) {
   if (parts.length >= 3) {
     const targetUsername = parts[1];
     const adminPass = parts[2];
@@ -133,15 +128,15 @@ function whisperTxt(senderId, recipient, message) {
   recipientClient.socket.write(whisperTxt);
 }
 
-function updateUsername(clientId, newUsername) {
+function updateUserName(clientId, newUsername) {
   const client = clients[clientId - 1];
 
-  if (client.username === newUsername) {
-    const errorMessage =
-      "The new username is the same as the current username.\n";
-    client.socket.write(errorMessage);
-    return;
-  }
+  // if (client.username === newUsername) {
+  //   const errorMessage =
+  //     "The new username is the same as the current username.\n";
+  //   client.socket.write(errorMessage);
+  //   return;
+  // }
 
   if (clients.find((c) => c.username === newUsername)) {
     const errorMessage = `The username '${newUsername}' is already in use.\n`;
