@@ -1,4 +1,4 @@
-**Command Server**
+**Command Server Project**
 
 # Enhance your server to be able to handle the following commands from clients. In all cases you should log the result to server.log.
 - /w - Sends a whisper to another connected client. For example: ‘/w Guest3 Hi’ Should send a message to Guest3 only.
