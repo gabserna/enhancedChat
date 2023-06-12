@@ -1,208 +1,142 @@
-const net = require("net");
-const fs = require("fs");
-
+const net = require('net');
+const fs = require('fs');
 const chatPort = 5050;
-const adminPassword = "supersecretpw"; // admin password to change: Admin123#
-if (adminPassword === "") {
-  throw new Error("Admin password cannot be empty.");
+const file = fs.createWriteStream('./chat.log', { flags: 'a+' });
+const chatUser = new Map();
+let onLineUser = 1;
+
+//displays msg and write it to file 'chat.log'
+function msgFromServer(message) {
+  console.log(message);
+  file.write(message + '\n');
+}
+//broadcast msg from sender to all chatroom users
+function broadcast(sender, message) {
+  chatUser.forEach((client) => {
+    if (client !== sender) {
+      client.write(`${sender.id}: ${message}\n`);
+    }
+  });
+  msgFromServer(`${sender.id}: ${message}`);
+}
+//this changes user's nickname
+function changeNickname(user, updatedNickname) {
+  const currentNickname = user.id;
+  if (updatedNickname === currentNickname) {
+    user.write('This is your current nickname!\n');
+    return;
+  }
+  if (chatUser.has(updatedNickname)) {
+    user.write('This nickname is already taken!\n');
+    return;
+  }
+  chatUser.delete(currentNickname);
+  chatUser.set(updatedNickname, user);
+  user.id = updatedNickname;
+  msgFromServer(`${currentNickname} is now ${updatedNickname}`);
+  chatUser.forEach((client) => {
+    client.write(`${currentNickname} is now ${updatedNickname}\n`);
+  });
+}
+//handles commands from users
+function handleCommand(user, output) {
+  const self = user.id;
+  const parts = output.split(' ');
+  const command = parts[0].toLowerCase();
+
+  switch (command) {
+    case '/userlist':
+      user.write(Array.from(chatUser.keys()).join(', ') + '\n');
+      break;
+    case '/username':
+      const newNickname = parts[1]?.trim();
+      if (newNickname) {
+        changeNickname(user, newNickname);
+      } else {
+        user.write('Wrong command. Try: /username [newNickname]\n');
+      }
+      break;
+    case '/w':
+      const targetUser = parts[1]?.trim();
+      const message = parts.slice(2).join(' ');
+      if (!targetUser || !message) {
+        user.write('Wrong command. Try: /w [username] [message]\n');
+        break;
+      }
+      if (targetUser === self) {
+        user.write('You should whisper to others\n');
+        break;
+      }
+      if (!chatUser.has(targetUser)) {
+        user.write(`Invalid user: '${targetUser}' not connected\n`);
+        break;
+      }
+      const target = chatUser.get(targetUser);
+      target.write(`${self} (whispered): ${message}\n`);
+      msgFromServer(`${self} whispered to ${targetUser}: ${message}`);
+      break;
+    case '/kick':
+      const adminPassword = 'abc123#';
+      const targetUsername = parts[1]?.trim();
+      const password = parts[2]?.trim();
+      if (!targetUsername || !password) {
+        user.write('Wrong command. Try: /kick [username] [password]\n');
+        break;
+      }
+      if (targetUsername === self) {
+        user.write('You cannot kick yourself\n');
+        break;
+      }
+      if (!chatUser.has(targetUsername)) {
+        user.write(`Invalid user: '${targetUsername}' not connected\n`);
+        break;
+      }
+      if (password !== adminPassword) {
+        user.write('Unable to kick user, wrong password\n');
+        break;
+      }
+      const targetUserSocket = chatUser.get(targetUsername);
+      targetUserSocket.write('You have been kicked out\n');
+      targetUserSocket.end();
+      chatUser.delete(targetUsername);
+      break;
+    default:
+      broadcast(user, output);
+      break;
+  }
 }
 
-let clients = [];
+const server = net.createServer((user) => {
+  user.setEncoding('utf8');
+  user.id = `Client${onLineUser++}`;
+  chatUser.set(user.id, user);
+  msgFromServer('New user in the chatroom');
+  user.write(`Welcome to the chatroom ${user.id}!\n`);
 
-const server = net.createServer((socket) => {
-  const clientId = clients.length + 1;
-  const client = { socket, username: null };
-  clients.push(client);
-
-  socket.write(`Welcome to the chat server User${clientId}!!!!\n`);
-  broadcastMessage(clientId, `User${clientId} joined the chat\n`);
-  logMessage(`User${clientId} has connected.\n`);
-
-  socket.on("data", (data) => {
-    const payload = data.toString().trim();
-
-    if (payload.startsWith("/")) {
-      adminCommand(clientId, payload);
-    } else {
-      const message = `User${clientId}: ${payload}\n`;
-      console.log(message);
-      fs.appendFileSync("chat.log", message);
-
-      broadcastMessage(clientId, message);
+  chatUser.forEach((client) => {
+    if (client !== user) {
+      client.write(`${user.id} has joined\n`);
     }
   });
 
-  socket.on("end", () => {
-    const message = `User${clientId} just disconnected.\n`;
-    console.log(message);
-    fs.appendFileSync("chat.log", message);
+  user.on('data', (output) => {
+    handleCommand(user, output.trim());
+  });
 
-    clients = clients.filter((c) => c.socket !== socket);
-    broadcastMessage(clientId, `User${clientId} has left chat.\n`);
+  user.on('end', () => {
+    msgFromServer(`${user.id} has left`);
+    chatUser.delete(user.id);
+    chatUser.forEach((client) => {
+      client.write(`${user.id} has left\n`);
+    });
+    console.log(`${user.id} just logged out`);
+  });
+
+  user.on('error', (err) => {
+    console.error('Something went wrong:', err.message);
   });
 });
 
 server.listen(chatPort, () => {
-  console.log(`Listening on chatPort ${chatPort}`);
+  console.log(`Listening on port: ${chatPort}`);
 });
-
-function adminCommand(clientId, command) {
-  const parts = command.split(" ");
-  const commandName = parts[0].toLowerCase();
-
-  switch (commandName) {
-    case "/w": whisperToUser(clientId, parts);
-      break;
-    case "/username": changeUserName(clientId, parts);
-      break;
-    case "/kick": kickUserOut(clientId, parts);
-      break;
-    case "/clientlist": showClientList(clientId);
-      break;
-    default: clients[clientId - 1].socket.write("Invalid command.\n");
-      break;
-  }
-}
-
-function whisperToUser(senderId, parts) {
-  if (parts.length >= 3) {
-    const recipient = parts[1];
-    const message = parts.slice(2).join(" ");
-    whisperTxt(senderId, recipient, message);
-  } else {updateUserName
-    clients[senderId - 1].socket.write("Invalid whisper command.\n");
-  }
-}
-
-function changeUserName(clientId, parts) {
-  if (parts.length === 2) {
-    const newUsername = parts[1];
-    updateUserName(clientId, newUsername);
-  } else {
-    clients[clientId - 1].socket.write("Invalid username command.\n");
-  }
-}
-
-function kickUserOut(adminId, parts) {
-  if (parts.length >= 3) {
-    const targetUsername = parts[1];
-    const adminPass = parts[2];
-    kickUser(adminId, targetUsername, adminPass);
-  } else {
-    clients[adminId - 1].socket.write("Invalid kick command.\n");
-  }
-}
-
-function broadcastMessage(senderId, message) {
-  clients.forEach((client) => {
-    if (client.socket !== clients[senderId - 1].socket) {
-      client.socket.write(message);
-    }
-  });
-}
-
-function logMessage(message) {
-  console.log(message);
-  fs.appendFileSync("chat.log", message);
-}
-
-function whisperTxt(senderId, recipient, message) {
-  const recipientClient = clients.find(
-    (client) => client.username === recipient
-  );
-
-  if (!recipientClient) {
-    const errorMessage = `User '${recipient}' not found.\n`;
-    clients[senderId - 1].socket.write(errorMessage);
-    return;
-  }
-
-  if (senderId === recipientClient.clientId) {
-    const errorMessage = "You can't whisper to yourself.\n";
-    clients[senderId - 1].socket.write(errorMessage);
-    return;
-  }
-
-  const senderName = `User${senderId}`;
-  const whisperTxt = `${senderName} whispers: ${message}\n`;
-  recipientClient.socket.write(whisperTxt);
-}
-
-function updateUserName(clientId, newUsername) {
-  const client = clients[clientId - 1];
-
-  // if (client.username === newUsername) {
-  //   const errorMessage =
-  //     "The new username is the same as the current username.\n";
-  //   client.socket.write(errorMessage);
-  //   return;
-  // }
-
-  if (clients.find((c) => c.username === newUsername)) {
-    const errorMessage = `The username '${newUsername}' is already in use.\n`;
-    client.socket.write(errorMessage);
-    return;
-  }
-
-  const previousUsername = client.username;
-  client.username = newUsername;
-
-  const successMessage = `Your username has been updated to '${newUsername}'.\n`;
-  client.socket.write(successMessage);
-
-  const broadcastMessage = `User${clientId} has changed their username to '${newUsername}'.\n`;
-  broadcastMessage(clientId, broadcastMessage);
-
-  logMessage(broadcastMessage);
-}
-
-function kickUser(adminId, targetUsername, adminPass) {
-  const adminClient = clients[adminId - 1];
-
-  if (adminPass !== adminPassword) {
-    const errorMessage = "Incorrect admin password.\n";
-    adminClient.socket.write(errorMessage);
-    return;
-  }
-
-  const targetClient = clients.find(
-    (client) => client.username === targetUsername
-  );
-
-  if (!targetClient) {
-    const errorMessage = `User '${targetUsername}' not found.\n`;
-    adminClient.socket.write(errorMessage);
-    return;
-  }
-
-  if (adminClient === targetClient) {
-    const errorMessage = "You can't kick yourself.\n";
-    adminClient.socket.write(errorMessage);
-    return;
-  }
-
-  const kickMessage = `You have been kicked from the chat by the admin.\n`;
-  targetClient.socket.write(kickMessage);
-
-  clients = clients.filter((client) => client !== targetClient);
-
-  const broadcastMessage = `User${targetClient.clientId} has been kicked from the chat by the admin.\n`;
-  broadcastMessage(adminId, broadcastMessage);
-
-  logMessage(broadcastMessage);
-}
-
-function showClientList(clientId) {
-  const client = clients[clientId - 1];
-  const connectedClients = clients
-    .filter((client) => client.username !== null)
-    .map((client) => client.username)
-    .join(", ");
-
-  if (connectedClients.length === 0) {
-    client.socket.write("No connected clients.\n");
-    return;
-  }
-
-  client.socket.write(`Connected clients: ${connectedClients}\n`);
-}

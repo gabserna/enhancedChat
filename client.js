@@ -1,28 +1,29 @@
-const net = require("net");
-const readline = require("readline");
-const client = new net.Socket();
+const net = require('net');
+const client = net.createConnection(5050, () => {
+  console.log('Connected to chatroom');
+});
+//client.setEncoding('utf8');
 
-client.connect(5050, "localhost", () => {
-  console.log("Connected to chat server!!");
-
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
+//event handler for incoming data from chat server
+client.on('data', (data) => {
+    console.log(data.toString('utf8'));
   });
+process.stdin.setEncoding('utf8');
 
-  rl.on("line", (input) => {
-    client.write(input + "\n");
-  });
+//event handler to read users input
+process.stdin.on('data', (input) => {
+  const userInput = input.trim();
 
-  rl.on("close", () => {
-    client.end();
-  });
+  //check user input is "quit" then exit the app
+  if (userInput === 'quit') {
+    process.exit();
+  } else {
+    //broadcast user input to the chat server
+    client.write(userInput);
+  }
 });
 
-client.on("data", (data) => {
-  console.log(data.toString());
-});
-
-client.on("close", () => {
-  console.log("Connection closed.");
+//event handler for end of stdin (input stream)
+process.stdin.on('end', () => {
+  process.exit();
 });
