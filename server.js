@@ -1,6 +1,7 @@
 const net = require('net');
 const fs = require('fs');
 const chatPort = 5050;
+// flag a+ to create a new file if doesn't exist or update if does exist....
 const file = fs.createWriteStream('./chat.log', { flags: 'a+' });
 const chatUser = new Map();
 let onLineUser = 1;
@@ -20,6 +21,20 @@ function broadcast(sender, message) {
   msgFromServer(`${sender.id}: ${message}`);
 }
 //this changes user's nickname
+// function changeNickname(user, updatedNickname) {
+//   const currentNickname = user.id;
+//   if (updatedNickname === currentNickname) {
+//     user.write('This is your current nickname!\n');
+//     return;
+//   }
+//   chatUser.delete(currentNickname);
+//   chatUser.set(updatedNickname, user);
+//   user.id = updatedNickname;
+//   msgFromServer(`${currentNickname} is now ${updatedNickname}`);
+//   chatUser.forEach((client) => {
+//     client.write(`${currentNickname} is now ${updatedNickname}\n`);
+//   });
+// }
 function changeNickname(user, updatedNickname) {
   const currentNickname = user.id;
   if (updatedNickname === currentNickname) {
@@ -83,6 +98,10 @@ function handleCommand(user, output) {
         user.write('Wrong command. Try: /kick [username] [password]\n');
         break;
       }
+      // if (!targetUsername || !password) {
+      // this works?
+      //   user.write('Wrong command. Try: /kick [username] [password]\n');
+      // }
       if (targetUsername === self) {
         user.write('You cannot kick yourself\n');
         break;
@@ -108,6 +127,11 @@ function handleCommand(user, output) {
 
 const server = net.createServer((user) => {
   user.setEncoding('utf8');
+  // managing user comm when join.....
+  // user.id = `Client${onLineUser++}`;
+  // chatUser.set(user.id, user);
+  // msgFromServer('New user in the chatroom');
+  // user.write(`Welcome to the chatroom ${user.id}!\n`);
   user.id = `Client${onLineUser++}`;
   chatUser.set(user.id, user);
   msgFromServer('New user in the chatroom');
